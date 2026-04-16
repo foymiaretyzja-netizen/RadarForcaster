@@ -4,7 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dynamic Weather & Terrain - 900p</title>
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+    
+    <script src="system/filter.js"></script>
+
     <style>
         body {
             margin: 0;
@@ -19,6 +23,23 @@
         h1 {
             margin: 10px 0;
             font-size: 1.5rem;
+        }
+        .controls {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            background-color: #333;
+            color: white;
+            border: 1px solid #555;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-family: monospace;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #555;
         }
         canvas {
             width: 1440px;
@@ -36,7 +57,15 @@
 </head>
 <body>
 
-    <h1>Synoptic Weather & Terrain Map (900p)</h1>
+    <h1>Synoptic Weather Simulator</h1>
+    
+    <div class="controls">
+        <button onclick="FilterSystem.setMode('composite')">Composite (Radar)</button>
+        <button onclick="FilterSystem.setMode('terrain')">Terrain Base</button>
+        <button onclick="FilterSystem.setMode('temperature')">Thermal Camera</button>
+        <button onclick="FilterSystem.setMode('moisture')">Water Vapor</button>
+    </div>
+
     <canvas id="weatherMap" width="1440" height="900"></canvas>
     <div class="stats" id="fpsCounter">FPS: 0</div>
 
@@ -47,10 +76,10 @@
 
         const simplex = new SimplexNoise();
 
+        // Grid Configuration
         const cols = 144; 
         const rows = 90;  
         const cellSize = 10;
-        
         let grid = [];
 
         function initGrid() {
@@ -61,53 +90,45 @@
                     let nx = i / cols - 0.5;
                     let ny = j / rows - 0.5;
                     
-                    // --- 1. ELEVATION (Base Map) ---
+                    // 1. Elevation
                     let e = 1.00 * simplex.noise2D(2 * nx, 2 * ny)
                           + 0.50 * simplex.noise2D(4 * nx, 4 * ny)
                           + 0.25 * simplex.noise2D(8 * nx, 8 * ny);
                     e = e / 1.75; 
                     let elevation = (e + 1) / 2; 
 
-                    // --- 2. TEMPERATURE & MOISTURE ---
+                    // 2. Base Properties (Thermal/Moisture anchors)
                     let baseTemp = 0;
                     let baseMoisture = 0;
 
-                    if (elevation < 0.45) {
-                        // WATER BIOME
-                        // Use an offset (+100) to get a unique noise map for ocean currents
+                    if (elevation < 0.45) { // Water
                         let waterTempNoise = simplex.noise2D(1.5 * nx + 100, 1.5 * ny + 100);
-                        // Map noise to realistic ocean temps (e.g., 5°C to 30°C)
                         baseTemp = 17.5 + (waterTempNoise * 12.5); 
-                        baseMoisture = 1.0; // 100% moisture over water
-                    } else {
-                        // LAND BIOME
-                        // Use another offset (+200) for base land temperature
+                        baseMoisture = 1.0; 
+                    } else { // Land
                         let landTempNoise = simplex.noise2D(2 * nx + 200, 2 * ny + 200);
                         baseTemp = 20 + (landTempNoise * 10);
 
                         if (elevation > 0.70) {
-                            // Mountains: Cold and Dry
-                            baseTemp -= (elevation - 0.70) * 50; // Drop temp drastically with height
-                            baseMoisture = 0.1; // Very dry
+                            baseTemp -= (elevation - 0.70) * 50; 
+                            baseMoisture = 0.1; 
                         } else if (elevation < 0.50) {
-                            // Beach/Coast: Hot and Moist
                             baseTemp += 5; 
                             baseMoisture = 0.8;
                         } else {
-                            // Regular Land: Moisture defined by a third noise map (+300)
                             let moistureNoise = simplex.noise2D(3 * nx + 300, 3 * ny + 300);
-                            // Map to a range of 0.2 (dry) to 0.7 (lush)
                             baseMoisture = 0.45 + (moistureNoise * 0.25); 
                         }
                     }
 
+                    // 3. Populate Cell
                     grid[i][j] = {
                         elevation: elevation,
                         pressure: 1013, 
-                        temperature: baseTemp, // Current dynamic temp
-                        baseTemp: baseTemp,    // The "anchor" temp it wants to return to
+                        temperature: baseTemp,
+                        baseTemp: baseTemp,    
                         humidity: baseMoisture,
-                        baseMoisture: baseMoisture, // The "anchor" moisture
+                        baseMoisture: baseMoisture, 
                         windU: 0, 
                         windV: 0  
                     };
@@ -115,73 +136,20 @@
             }
         }
 
-        // --- RENDER FUNCTIONS ---
-
-        function getTerrainColor(cell) {
-            let el = cell.elevation;
-            let t = cell.baseTemp;
-            let m = cell.baseMoisture;
-
-            if (el < 0.45) {
-                // WATER: Map temperature to Hue (Cold = Deep Blue, Warm = Cyan/Teal)
-                // 5°C -> Hue 240 (Blue), 30°C -> Hue 180 (Cyan)
-                let hue = 240 - ((t - 5) / 25) * 60;
-                hue = Math.max(180, Math.min(240, hue));
-                let lightness = el < 0.35 ? 30 : 45; // Darker for deep water
-                return `hsl(${hue}, 80%, ${lightness}%)`;
-
-            } else if (el < 0.50) {
-                // BEACH: Sand color
-                return '#e6dca1';
-
-            } else if (el >= 0.70) {
-                // MOUNTAINS: Grey to White based on height
-                if (el > 0.85) return '#ecf0f1'; // Snow
-                return '#7f8c8d'; // Grey dry rock
-
-            } else {
-                // INLAND: Color based on moisture (Dry = Yellow/Brown, Lush = Green)
-                // Hue 60 is Yellow/Khaki, Hue 120 is Green
-                let hue = 50 + (m * 70); 
-                return `hsl(${hue}, 40%, 40%)`;
-            }
-        }
-
-        function drawMap() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            for (let i = 0; i < cols; i++) {
-                for (let j = 0; j < rows; j++) {
-                    const cell = grid[i][j];
-                    
-                    // Draw base terrain and biomes
-                    ctx.fillStyle = getTerrainColor(cell);
-                    ctx.fillRect(i * cellSize, j * cellSize, cellSize, cellSize);
-
-                    // Optional: You can comment this out to just see the terrain map clearly.
-                    // This creates the shifting weather overlay.
-                    const currentTemp = grid[i][j].temperature;
-                    const tempIntensity = Math.max(0, Math.min(255, Math.floor((currentTemp / 30) * 255)));
-                    ctx.fillStyle = `rgba(${tempIntensity}, 50, ${255 - tempIntensity}, 0.15)`;
-                    ctx.fillRect(i * cellSize, j * cellSize, cellSize, cellSize);
-                }
-            }
-        }
-
-        // --- PHYSICS & ANIMATION ---
+        // --- PHYSICS ENGINE ---
 
         function updatePhysics() {
             for (let i = 0; i < cols; i++) {
                 for (let j = 0; j < rows; j++) {
-                    // Temporarily shifting dynamic temp to show animation
-                    // In the future, wind will advect (move) this temperature around!
+                    // Slight animation to prove physics loop is running
                     grid[i][j].temperature += (Math.random() - 0.5) * 0.5;
-                    
-                    // The land/water slowly pulls the air temp back to its natural base state
+                    // Terrain pulls air temp back to baseline
                     grid[i][j].temperature += (grid[i][j].baseTemp - grid[i][j].temperature) * 0.01;
                 }
             }
         }
+
+        // --- MAIN LOOP ---
 
         let lastTime = 0;
         let frames = 0;
@@ -194,12 +162,16 @@
             }
             frames++;
 
+            // 1. Calculate physics
             updatePhysics();
-            drawMap();
+            
+            // 2. Delegate rendering to the filter.js tool
+            FilterSystem.render(ctx, grid, cols, rows, cellSize);
 
             requestAnimationFrame(loop);
         }
 
+        // Boot Sequence
         initGrid();
         requestAnimationFrame(loop);
 
