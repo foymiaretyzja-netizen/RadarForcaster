@@ -8,6 +8,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
     
     <script src="system/world-data.js"></script>
+    <script src="system/physics.js"></script> 
     <script src="system/filter.js"></script>
 
     <style>
@@ -287,19 +288,8 @@
 
         // --- PHYSICS ENGINE ---
         function updatePhysics() {
-            // Using WorldState logic
-            for (let i = 0; i < WorldState.cols; i++) {
-                for (let j = 0; j < WorldState.rows; j++) {
-                    let cell = WorldState.grid[i][j];
-                    
-                    cell.temperature += (Math.random() - 0.5) * 0.5;
-                    cell.temperature += (cell.baseTemp - cell.temperature) * 0.01;
-                    
-                    // Future: We will call external physics functions here like:
-                    // PhysicsEngine.calculatePressureGradient(WorldState);
-                    // PhysicsEngine.advectFluids(WorldState);
-                }
-            }
+            // UPDATED: Now delegates entirely to physics.js
+            PhysicsEngine.update(WorldState);
         }
 
         // --- MAIN LOOP ---
