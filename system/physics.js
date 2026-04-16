@@ -6,7 +6,7 @@ const PhysicsEngine = {
     
     update: function(world) {
         this.processThermodynamics(world);
-        // We will add this.processWindAdvection(world) here next!
+        this.processWindAdvection(world); // <-- Now calling the wind logic!
     },
 
     processThermodynamics: function(world) {
@@ -15,40 +15,81 @@ const PhysicsEngine = {
                 let cell = world.grid[i][j];
 
                 // --- 1. EVAPORATION ---
-                // If over water (elevation < 0.45) and warm enough, add to invisible humidity
                 if (cell.elevation < 0.45 && cell.temperature > 10) {
                     let evapRate = (cell.temperature - 10) * 0.002;
                     cell.humidity += evapRate;
                 }
 
                 // --- 2. CONDENSATION (Cloud Formation) ---
-                // Calculate how much water the air can hold. 
-                // Warm air holds a lot; cold air holds very little.
                 let maxHumidityCapacity = Math.max(0.1, cell.temperature * 0.08);
 
-                // If humidity exceeds capacity, it condenses into visible clouds
                 if (cell.humidity > maxHumidityCapacity) {
                     let excessVapor = cell.humidity - maxHumidityCapacity;
-                    
-                    // Vapor becomes cloud
                     cell.clouds += excessVapor; 
-                    
-                    // Air is maxed out
                     cell.humidity = maxHumidityCapacity; 
                 }
 
                 // --- 3. DISSIPATION ---
-                // If the air is dry and warm, clouds evaporate back into invisible vapor
                 if (cell.clouds > 0 && cell.humidity < maxHumidityCapacity) {
                     let absorbAmount = Math.min(cell.clouds, (maxHumidityCapacity - cell.humidity) * 0.05);
                     cell.clouds -= absorbAmount;
                     cell.humidity += absorbAmount;
                 }
 
-                // --- HOUSEKEEPING ---
-                // Keep values within sane bounds for the simulation
+                // Keep values within sane bounds
                 cell.humidity = Math.max(0, cell.humidity);
-                cell.clouds = Math.max(0, Math.min(cell.clouds, 5.0)); // Cap max cloud density
+                cell.clouds = Math.max(0, Math.min(cell.clouds, 5.0));
+            }
+        }
+    },
+
+    // --- 4. FLUID DYNAMICS (WIND) ---
+    processWindAdvection: function(world) {
+        // Create a temporary buffer so we don't overwrite data mid-calculation
+        let nextClouds = Array(world.cols).fill(0).map(() => Array(world.rows).fill(0));
+        let nextHumidity = Array(world.cols).fill(0).map(() => Array(world.rows).fill(0));
+
+        // First, copy the current state to the buffer
+        for (let i = 0; i < world.cols; i++) {
+            for (let j = 0; j < world.rows; j++) {
+                nextClouds[i][j] = world.grid[i][j].clouds;
+                nextHumidity[i][j] = world.grid[i][j].humidity;
+            }
+        }
+
+        // Push clouds and humidity to neighboring cells based on wind
+        for (let i = 0; i < world.cols; i++) {
+            for (let j = 0; j < world.rows; j++) {
+                let cell = world.grid[i][j];
+                
+                // Simple Global Wind: Blowing West to East (left to right)
+                // We subtract surfaceFriction so the wind slows down over land/mountains!
+                let windSpeed = 0.8 - cell.surfaceFriction; 
+                windSpeed = Math.max(0.05, windSpeed); // Ensure it never fully stops
+
+                // Calculate destination cell index (wrap around map like a globe)
+                let destI = (i + 1) % world.cols; 
+
+                // Calculate how much stuff to move (percentage of current cell contents)
+                let transferRate = windSpeed * 0.4; 
+                let cloudTransfer = cell.clouds * transferRate;
+                let humidityTransfer = cell.humidity * transferRate;
+
+                // Deduct from current cell
+                nextClouds[i][j] -= cloudTransfer;
+                nextHumidity[i][j] -= humidityTransfer;
+
+                // Add to neighbor cell to the East
+                nextClouds[destI][j] += cloudTransfer;
+                nextHumidity[destI][j] += humidityTransfer;
+            }
+        }
+
+        // Apply the moved buffer data back to the live world grid
+        for (let i = 0; i < world.cols; i++) {
+            for (let j = 0; j < world.rows; j++) {
+                world.grid[i][j].clouds = Math.max(0, nextClouds[i][j]);
+                world.grid[i][j].humidity = Math.max(0, nextHumidity[i][j]);
             }
         }
     }
