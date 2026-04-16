@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Weather Simulation - 900p</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: sans-serif;
+        }
+        h1 {
+            margin: 10px 0;
+            font-size: 1.5rem;
+        }
+        /* Lock canvas to 1440x900 (900p) */
+        canvas {
+            width: 1440px;
+            height: 900px;
+            background-color: #001f3f; /* Deep blue sea/base color */
+            border: 2px solid #333;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+        }
+        .stats {
+            margin-top: 10px;
+            font-family: monospace;
+            color: #aaaaaa;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Synoptic Weather Map (900p)</h1>
+    <canvas id="weatherMap" width="1440" height="900"></canvas>
+    <div class="stats" id="fpsCounter">FPS: 0</div>
+
+    <script>
+        const canvas = document.getElementById('weatherMap');
+        const ctx = canvas.getContext('2d');
+        const fpsCounter = document.getElementById('fpsCounter');
+
+        // Simulation parameters
+        const cols = 144; // Scaled down grid for CPU performance (10x10 pixel blocks)
+        const rows = 90;  // 1440/10 = 144, 900/10 = 90
+        const cellSize = 10;
+        
+        // The Data Grid: Mesoscale/Synoptic variables
+        let grid = [];
+
+        function initGrid() {
+            for (let i = 0; i < cols; i++) {
+                grid[i] = [];
+                for (let j = 0; j < rows; j++) {
+                    // Seed with baseline atmospheric data
+                    grid[i][j] = {
+                        pressure: 1013, // Standard sea level pressure in mb
+                        temperature: Math.random() * 30, // 0 to 30 Celsius baseline
+                        humidity: Math.random(), // 0.0 to 1.0
+                        windU: 0, // Horizontal wind velocity
+                        windV: 0  // Vertical wind velocity
+                    };
+                }
+            }
+        }
+
+        // The Physics Engine (Navier-Stokes / Advection goes here)
+        function updatePhysics() {
+            // TODO: Implement Pressure Gradients
+            // Air moves from High (e.g., 1020mb) to Low (e.g., 990mb)
+            
+            // TODO: Implement Coriolis Effect
+            // Deflect windU and windV based on rotation
+
+            // TODO: Detect Fronts
+            // If sharp temperature gradient exists between grid[i][j] and grid[i+1][j], trigger lift
+        }
+
+        // The Renderer
+        function drawMap() {
+            // Clear previous frame
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            for (let i = 0; i < cols; i++) {
+                for (let j = 0; j < rows; j++) {
+                    const cell = grid[i][j];
+                    
+                    // Simple visualization: map temperature to a color map (Blue = Cold, Red = Warm)
+                    // This creates the visual "fronts"
+                    const tempIntensity = Math.floor((cell.temperature / 30) * 255);
+                    ctx.fillStyle = `rgb(${tempIntensity}, 50, ${255 - tempIntensity})`;
+                    
+                    ctx.fillRect(i * cellSize, j * cellSize, cellSize, cellSize);
+                }
+            }
+        }
+
+        // Animation Loop Variables
+        let lastTime = 0;
+        let frames = 0;
+
+        function loop(timestamp) {
+            // Calculate FPS
+            if (timestamp - lastTime >= 1000) {
+                fpsCounter.innerText = `FPS: ${frames}`;
+                frames = 0;
+                lastTime = timestamp;
+            }
+            frames++;
+
+            // 1. Calculate the fluid dynamics
+            updatePhysics();
+
+            // 2. Render the results to the 900p canvas
+            drawMap();
+
+            // 3. Request next frame
+            requestAnimationFrame(loop);
+        }
+
+        // Boot up the simulation
+        initGrid();
+        requestAnimationFrame(loop);
+
+    </script>
+</body>
+</html>
