@@ -14,10 +14,48 @@
             padding: 0;
             background-color: #121212;
             color: #ffffff;
-            overflow: hidden; /* Prevents scrollbars when zooming */
+            overflow: hidden;
             font-family: sans-serif;
         }
-        /* Floating UI panel */
+        
+        /* --- START MENU UI --- */
+        #startMenu {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #121212;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+        #startMenu h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        #startMenu p {
+            color: #aaaaaa;
+            margin-bottom: 30px;
+        }
+        .resolution-buttons {
+            display: flex;
+            gap: 20px;
+        }
+        .res-btn {
+            background-color: #2c3e50;
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            border-radius: 5px;
+        }
+        .res-btn:hover {
+            background-color: #34495e;
+            transform: scale(1.05);
+        }
+
+        /* --- MAIN UI PANEL --- */
         .ui-panel {
             position: absolute;
             top: 15px;
@@ -28,8 +66,9 @@
             border-radius: 8px;
             border: 1px solid #333;
             box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+            display: none; /* Hidden until game starts */
         }
-        h1 {
+        .ui-panel h1 {
             margin: 0 0 10px 0;
             font-size: 1.2rem;
         }
@@ -44,11 +83,13 @@
             padding: 8px 16px;
             cursor: pointer;
             font-family: monospace;
-            transition: background-color 0.2s;
+            transition: all 0.2s;
         }
         button:hover {
             background-color: #555;
         }
+        
+        /* --- CANVAS --- */
         canvas {
             display: block;
             background-color: #000;
@@ -66,7 +107,16 @@
 </head>
 <body>
 
-    <div class="ui-panel">
+    <div id="startMenu">
+        <h1>Synoptic Weather Simulator</h1>
+        <p>Select simulation fidelity. Lower resolutions improve physics performance.</p>
+        <div class="resolution-buttons">
+            <button class="res-btn" onclick="startGame('720p')">Start 720p (Fast)</button>
+            <button class="res-btn" onclick="startGame('900p')">Start 900p (Balanced)</button>
+        </div>
+    </div>
+
+    <div class="ui-panel" id="mainUI">
         <h1>Synoptic Weather Simulator</h1>
         <div class="controls">
             <button onclick="FilterSystem.setMode('composite')">Composite</button>
@@ -85,7 +135,7 @@
         const fpsCounter = document.getElementById('fpsCounter');
         const simplex = new SimplexNoise();
 
-        // --- DYNAMIC CANVAS SIZING ---
+        // Canvas sizing
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
@@ -93,12 +143,11 @@
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
 
-        // --- CAMERA SYSTEM ---
+        // Camera System
         let camera = { x: 0, y: 0, zoom: 1 };
         let isDragging = false;
         let dragStart = { x: 0, y: 0 };
 
-        // Pan Map (Click and Drag)
         canvas.addEventListener('mousedown', (e) => {
             isDragging = true;
             dragStart.x = e.clientX - camera.x;
@@ -115,33 +164,47 @@
         canvas.addEventListener('mouseup', () => isDragging = false);
         canvas.addEventListener('mouseleave', () => isDragging = false);
 
-        // Zoom Map (Scroll Wheel)
         canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
-            
-            // Determine zoom direction and speed
             const zoomAmount = -e.deltaY * 0.001;
             const newZoom = Math.max(0.2, Math.min(5.0, camera.zoom + zoomAmount));
             
-            // Calculate mouse position in world space before zoom to zoom INTO the mouse cursor
             const mouseX = e.clientX;
             const mouseY = e.clientY;
             const worldX = (mouseX - camera.x) / camera.zoom;
             const worldY = (mouseY - camera.y) / camera.zoom;
 
             camera.zoom = newZoom;
-
-            // Adjust camera so mouse stays over the exact same world coordinate
             camera.x = mouseX - worldX * camera.zoom;
             camera.y = mouseY - worldY * camera.zoom;
         }, { passive: false });
 
 
-        // --- GRID CONFIGURATION (Higher Resolution) ---
-        const cols = 300; // Increased resolution
-        const rows = 180; // Increased resolution
+        // Grid Configuration (Dynamic)
+        let cols = 0; 
+        let rows = 0; 
         const cellSize = 10;
         let grid = [];
+
+        // --- BOOT SEQUENCE ---
+        function startGame(resolution) {
+            // 1. Set grid dimensions based on choice
+            if (resolution === '720p') {
+                cols = 128; // 1280 / 10
+                rows = 72;  // 720 / 10
+            } else if (resolution === '900p') {
+                cols = 144; // 1440 / 10
+                rows = 90;  // 900 / 10
+            }
+
+            // 2. Hide start menu, show main UI
+            document.getElementById('startMenu').style.display = 'none';
+            document.getElementById('mainUI').style.display = 'block';
+
+            // 3. Initialize the grid and start loop
+            initGrid();
+            requestAnimationFrame(loop);
+        }
 
         function initGrid() {
             for (let i = 0; i < cols; i++) {
@@ -192,7 +255,7 @@
                     };
                 }
             }
-            // Center the camera on the newly generated map
+            // Center the camera on the generated map
             camera.x = (window.innerWidth / 2) - ((cols * cellSize) / 2);
             camera.y = (window.innerHeight / 2) - ((rows * cellSize) / 2);
         }
@@ -221,22 +284,16 @@
 
             updatePhysics();
             
-            // 1. Clear the entire screen (handling the background)
-            ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform to clear screen properly
+            ctx.setTransform(1, 0, 0, 1, 0, 0); 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            // 2. Apply Camera Transforms (Pan and Zoom)
             ctx.translate(camera.x, camera.y);
             ctx.scale(camera.zoom, camera.zoom);
 
-            // 3. Render the grid
             FilterSystem.render(ctx, grid, cols, rows, cellSize);
 
             requestAnimationFrame(loop);
         }
-
-        initGrid();
-        requestAnimationFrame(loop);
 
     </script>
 </body>
