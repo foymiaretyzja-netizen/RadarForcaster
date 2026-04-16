@@ -1,6 +1,6 @@
 /**
  * Atmospheric Physics Engine
- * Handles thermodynamics, geostrophic wind dynamics, and fluid advection.
+ * Handles thermodynamics, geostrophic wind dynamics, fluid advection, and frontal boundaries.
  */
 const PhysicsEngine = {
     
@@ -8,6 +8,7 @@ const PhysicsEngine = {
         this.processThermodynamics(world);
         this.calculateWind(world);
         this.processAdvection(world);
+        this.processFrontalLift(world); // <-- New Frontal Dynamics!
     },
 
     // --- 1. THERMODYNAMICS & PRESSURE ---
@@ -17,7 +18,6 @@ const PhysicsEngine = {
                 let cell = world.grid[i][j];
 
                 // Ground Radiative Heating/Cooling + Chaos
-                // The air tries to return to the ground's base temp, but we add slight noise
                 cell.temperature += (cell.baseTemp - cell.temperature) * 0.05;
                 cell.temperature += (Math.random() - 0.5) * 0.2;
 
@@ -31,7 +31,7 @@ const PhysicsEngine = {
                     cell.humidity += evapRate;
                 }
 
-                // Condensation
+                // Condensation (Standard Radiative/Convective)
                 let maxCapacity = Math.max(0.1, cell.temperature * 0.08);
                 if (cell.humidity > maxCapacity) {
                     let excess = cell.humidity - maxCapacity;
@@ -128,7 +128,7 @@ const PhysicsEngine = {
                 let h01 = world.grid[x0][y1].humidity; let h11 = world.grid[x1][y1].humidity;
                 nextHumidity[i][j] = h00*(1-dx)*(1-dy) + h10*dx*(1-dy) + h01*(1-dx)*dy + h11*dx*dy;
 
-                // Advect Temperature (This makes the weather systems shift!)
+                // Advect Temperature
                 let t00 = world.grid[x0][y0].temperature; let t10 = world.grid[x1][y0].temperature;
                 let t01 = world.grid[x0][y1].temperature; let t11 = world.grid[x1][y1].temperature;
                 nextTemp[i][j] = t00*(1-dx)*(1-dy) + t10*dx*(1-dy) + t01*(1-dx)*dy + t11*dx*dy;
@@ -141,6 +141,49 @@ const PhysicsEngine = {
                 world.grid[i][j].clouds = Math.max(0, nextClouds[i][j]);
                 world.grid[i][j].humidity = Math.max(0, nextHumidity[i][j]);
                 world.grid[i][j].temperature = nextTemp[i][j];
+            }
+        }
+    },
+
+    // --- 4. FRONTAL DYNAMICS (Warm/Cold Fronts) ---
+    processFrontalLift: function(world) {
+        for (let i = 0; i < world.cols; i++) {
+            for (let j = 0; j < world.rows; j++) {
+                let cell = world.grid[i][j];
+
+                // Determine upwind coordinates to see what kind of air is blowing in
+                let upwindX = Math.floor((i - cell.windU + world.cols) % world.cols);
+                let upwindY = Math.floor((j - cell.windV + world.rows) % world.rows);
+                let upwindCell = world.grid[upwindX][upwindY];
+
+                // Temperature Advection: Upwind Temp minus Current Temp
+                let tempGradient = upwindCell.temperature - cell.temperature;
+
+                // If the temperature difference is significant enough to act as a front
+                if (Math.abs(tempGradient) > 0.5) {
+                    let liftCondensation = 0;
+
+                    if (tempGradient < 0) {
+                        // COLD FRONT: Cold air advancing into warm air.
+                        // Violent wedge effect. High conversion of humidity to clouds.
+                        liftCondensation = cell.humidity * 0.15 * Math.abs(tempGradient);
+                    } else {
+                        // WARM FRONT: Warm air riding up over retreating cold air.
+                        // Gentle, widespread lift. Lower conversion rate.
+                        liftCondensation = cell.humidity * 0.05 * tempGradient;
+                    }
+
+                    // Apply the forced frontal condensation
+                    if (liftCondensation > 0) {
+                        // Cap the condensation by the available humidity
+                        let maxCondense = Math.min(cell.humidity, liftCondensation);
+                        cell.clouds += maxCondense;
+                        cell.humidity -= maxCondense;
+                        
+                        // Enforce cloud cap
+                        cell.clouds = Math.min(cell.clouds, 5.0); 
+                    }
+                }
             }
         }
     }
