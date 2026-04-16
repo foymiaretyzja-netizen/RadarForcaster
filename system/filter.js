@@ -14,9 +14,6 @@ const FilterSystem = {
 
     // Main render loop called every frame
     render: function(ctx, grid, cols, rows, cellSize) {
-        // Clear the canvas
-        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-
         for (let i = 0; i < cols; i++) {
             for (let j = 0; j < rows; j++) {
                 const cell = grid[i][j];
@@ -89,13 +86,22 @@ const FilterSystem = {
 
     // 4. Composite View (Terrain Base + Weather Overlay)
     drawComposite: function(ctx, cell, x, y, cellSize) {
-        // Draw the solid terrain base
+        // 1. Draw the solid terrain base
         ctx.fillStyle = this.getTerrainColor(cell);
         ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
 
-        // Overlay current temperature shifts (Radar style)
+        // 2. Overlay current temperature shifts (Radar style, kept subtle)
         const tempIntensity = Math.max(0, Math.min(255, Math.floor((cell.temperature / 30) * 255)));
-        ctx.fillStyle = `rgba(${tempIntensity}, 50, ${255 - tempIntensity}, 0.15)`;
+        ctx.fillStyle = `rgba(${tempIntensity}, 50, ${255 - tempIntensity}, 0.05)`;
         ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+
+        // 3. CLOUD OVERLAY
+        if (cell.clouds > 0) {
+            // We capped clouds at 5.0 in physics.js. 
+            // We convert that to an opacity value between 0.0 and 0.85.
+            const cloudOpacity = Math.min(0.85, cell.clouds * 0.2);
+            ctx.fillStyle = `rgba(255, 255, 255, ${cloudOpacity})`;
+            ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+        }
     }
 };
