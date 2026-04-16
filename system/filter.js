@@ -143,7 +143,6 @@ const FilterSystem = {
     // --- FILTER COLOR MAPPERS ---
     getTerrainColor: function(cell) {
         let el = cell.elevation;
-        // BUG FIX: Add safety fallbacks so missing data doesn't crash the color renderer
         let t = cell.baseTemp || cell.temperature || 15; 
         let m = cell.baseMoisture || cell.humidity || 0.5; 
 
@@ -165,20 +164,26 @@ const FilterSystem = {
     },
 
     drawComposite: function(ctx, cell, x, y, cellSize) {
+        // 1. Draw the terrain
         ctx.fillStyle = this.getTerrainColor(cell);
         ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
 
+        // 2. Draw the subtle temperature radar overlay
         const tempIntensity = Math.max(0, Math.min(255, Math.floor((cell.temperature / 30) * 255)));
         ctx.fillStyle = `rgba(${tempIntensity}, 50, ${255 - tempIntensity}, 0.05)`;
         ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
 
-        // Continental Scale Clouds
+        // 3. Continental Scale Clouds
         if (cell.clouds > 0.1) {
-            const sizeRatio = Math.min(0.85, cell.clouds * 0.2); 
+            // Use a fixed size ratio (e.g., 85% of the cell).
+            // This prevents the "growing boxes" look while keeping the gaps between cells.
+            const sizeRatio = 0.85; 
             const cloudSize = cellSize * sizeRatio;
             const offset = (cellSize - cloudSize) / 2;
 
-            const cloudOpacity = Math.min(0.9, cell.clouds * 0.25);
+            // Use ONLY opacity to show cloud thickness/formation
+            const cloudOpacity = Math.min(0.95, cell.clouds * 0.3);
+            
             ctx.fillStyle = `rgba(255, 255, 255, ${cloudOpacity})`;
             ctx.fillRect((x * cellSize) + offset, (y * cellSize) + offset, cloudSize, cloudSize);
         }
@@ -194,9 +199,9 @@ const FilterSystem = {
 
         if (Math.abs(tempGradient) > 0.6) {
             if (tempGradient < 0) {
-                ctx.fillStyle = 'rgba(0, 50, 255, 0.6)';
+                ctx.fillStyle = 'rgba(0, 50, 255, 0.6)'; // Cold Front
             } else {
-                ctx.fillStyle = 'rgba(255, 50, 0, 0.6)';
+                ctx.fillStyle = 'rgba(255, 50, 0, 0.6)'; // Warm Front
             }
             ctx.fillRect(i * cellSize, j * cellSize, cellSize, cellSize);
         }
