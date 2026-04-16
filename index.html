@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dynamic Weather Simulation - 900p</title>
+    <title>Dynamic Weather & Terrain - 900p</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
     <style>
         body {
             margin: 0;
@@ -19,11 +20,11 @@
             margin: 10px 0;
             font-size: 1.5rem;
         }
-        /* Lock canvas to 1440x900 (900p) */
+        /* Lock canvas to 1440x900 */
         canvas {
             width: 1440px;
             height: 900px;
-            background-color: #001f3f; /* Deep blue sea/base color */
+            background-color: #000;
             border: 2px solid #333;
             box-shadow: 0 4px 8px rgba(0,0,0,0.5);
         }
@@ -36,7 +37,7 @@
 </head>
 <body>
 
-    <h1>Synoptic Weather Map (900p)</h1>
+    <h1>Synoptic Weather & Terrain Map (900p)</h1>
     <canvas id="weatherMap" width="1440" height="900"></canvas>
     <div class="stats" id="fpsCounter">FPS: 0</div>
 
@@ -45,67 +46,104 @@
         const ctx = canvas.getContext('2d');
         const fpsCounter = document.getElementById('fpsCounter');
 
+        // Initialize Simplex Noise generator
+        const simplex = new SimplexNoise();
+
         // Simulation parameters
-        const cols = 144; // Scaled down grid for CPU performance (10x10 pixel blocks)
-        const rows = 90;  // 1440/10 = 144, 900/10 = 90
+        const cols = 144; 
+        const rows = 90;  
         const cellSize = 10;
         
-        // The Data Grid: Mesoscale/Synoptic variables
         let grid = [];
 
         function initGrid() {
+            // Generate terrain using Fractional Brownian Motion (fBm)
+            // This layers multiple "octaves" of noise for realistic detail
             for (let i = 0; i < cols; i++) {
                 grid[i] = [];
                 for (let j = 0; j < rows; j++) {
-                    // Seed with baseline atmospheric data
+                    
+                    // Scale coordinates for noise generation
+                    let nx = i / cols - 0.5;
+                    let ny = j / rows - 0.5;
+                    
+                    // Layer 1: Large continents
+                    let e = 1.00 * simplex.noise2D(2 * nx, 2 * ny);
+                    // Layer 2: Medium details (hills/bays)
+                    e += 0.50 * simplex.noise2D(4 * nx, 4 * ny);
+                    // Layer 3: Fine details (jagged mountains)
+                    e += 0.25 * simplex.noise2D(8 * nx, 8 * ny);
+                    
+                    // Normalize the noise from roughly -1.75...1.75 down to 0.0...1.0
+                    e = e / (1.00 + 0.50 + 0.25); 
+                    let elevation = (e + 1) / 2; 
+
                     grid[i][j] = {
-                        pressure: 1013, // Standard sea level pressure in mb
-                        temperature: Math.random() * 30, // 0 to 30 Celsius baseline
-                        humidity: Math.random(), // 0.0 to 1.0
-                        windU: 0, // Horizontal wind velocity
-                        windV: 0  // Vertical wind velocity
+                        elevation: elevation,
+                        pressure: 1013, 
+                        temperature: Math.random() * 30, // Random starting temp
+                        humidity: Math.random(),
+                        windU: 0, 
+                        windV: 0  
                     };
                 }
             }
         }
 
-        // The Physics Engine (Navier-Stokes / Advection goes here)
-        function updatePhysics() {
-            // TODO: Implement Pressure Gradients
-            // Air moves from High (e.g., 1020mb) to Low (e.g., 990mb)
-            
-            // TODO: Implement Coriolis Effect
-            // Deflect windU and windV based on rotation
+        // --- RENDER FUNCTIONS ---
 
-            // TODO: Detect Fronts
-            // If sharp temperature gradient exists between grid[i][j] and grid[i+1][j], trigger lift
+        function getTerrainColor(elevation) {
+            // Map the 0.0 - 1.0 elevation to terrain biomes
+            if (elevation < 0.35) return '#1c3d5a'; // Deep water
+            if (elevation < 0.45) return '#2980b9'; // Shallow water
+            if (elevation < 0.50) return '#e6dca1'; // Sand/Beach
+            if (elevation < 0.70) return '#27ae60'; // Grassland
+            if (elevation < 0.85) return '#7f8c8d'; // Mountains
+            return '#ecf0f1'; // Snow caps
         }
 
-        // The Renderer
         function drawMap() {
-            // Clear previous frame
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             for (let i = 0; i < cols; i++) {
                 for (let j = 0; j < rows; j++) {
                     const cell = grid[i][j];
                     
-                    // Simple visualization: map temperature to a color map (Blue = Cold, Red = Warm)
-                    // This creates the visual "fronts"
+                    // 1. Draw Terrain Base
+                    ctx.fillStyle = getTerrainColor(cell.elevation);
+                    ctx.fillRect(i * cellSize, j * cellSize, cellSize, cellSize);
+
+                    // 2. Draw Weather Overlay (Semi-transparent)
+                    // Currently maps temperature to a subtle red/blue tint over the terrain
                     const tempIntensity = Math.floor((cell.temperature / 30) * 255);
-                    ctx.fillStyle = `rgb(${tempIntensity}, 50, ${255 - tempIntensity})`;
                     
+                    // Using rgba to make the weather layer 30% transparent (0.3)
+                    ctx.fillStyle = `rgba(${tempIntensity}, 50, ${255 - tempIntensity}, 0.3)`;
                     ctx.fillRect(i * cellSize, j * cellSize, cellSize, cellSize);
                 }
             }
         }
 
-        // Animation Loop Variables
+        // --- PHYSICS & ANIMATION ---
+
+        function updatePhysics() {
+            // Weather logic will go here.
+            // You can now use grid[i][j].elevation to impact the wind!
+            
+            // Temporary: Just shifting temperatures slightly to prove it's animating
+            for (let i = 0; i < cols; i++) {
+                for (let j = 0; j < rows; j++) {
+                    grid[i][j].temperature += (Math.random() - 0.5) * 0.5;
+                    // Clamp temps between 0 and 30
+                    grid[i][j].temperature = Math.max(0, Math.min(30, grid[i][j].temperature));
+                }
+            }
+        }
+
         let lastTime = 0;
         let frames = 0;
 
         function loop(timestamp) {
-            // Calculate FPS
             if (timestamp - lastTime >= 1000) {
                 fpsCounter.innerText = `FPS: ${frames}`;
                 frames = 0;
@@ -113,17 +151,13 @@
             }
             frames++;
 
-            // 1. Calculate the fluid dynamics
             updatePhysics();
-
-            // 2. Render the results to the 900p canvas
             drawMap();
 
-            // 3. Request next frame
             requestAnimationFrame(loop);
         }
 
-        // Boot up the simulation
+        // Boot it up
         initGrid();
         requestAnimationFrame(loop);
 
