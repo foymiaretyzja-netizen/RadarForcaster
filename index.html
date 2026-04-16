@@ -6,6 +6,8 @@
     <title>Dynamic Weather & Terrain - Interactive</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+    
+    <script src="system/world-data.js"></script>
     <script src="system/filter.js"></script>
 
     <style>
@@ -49,6 +51,10 @@
             padding: 15px 30px;
             font-size: 1.2rem;
             border-radius: 5px;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
         }
         .res-btn:hover {
             background-color: #34495e;
@@ -61,12 +67,12 @@
             top: 15px;
             left: 15px;
             z-index: 10;
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(0, 0, 0, 0.8);
             padding: 15px;
             border-radius: 8px;
             border: 1px solid #333;
             box-shadow: 0 4px 8px rgba(0,0,0,0.5);
-            display: none; /* Hidden until game starts */
+            display: none; 
         }
         .ui-panel h1 {
             margin: 0 0 10px 0;
@@ -180,35 +186,35 @@
         }, { passive: false });
 
 
-        // Grid Configuration (Dynamic)
-        let cols = 0; 
-        let rows = 0; 
-        const cellSize = 10;
-        let grid = [];
-
         // --- BOOT SEQUENCE ---
         function startGame(resolution) {
-            // 1. Set grid dimensions based on choice
+            let targetCols, targetRows;
+            
             if (resolution === '720p') {
-                cols = 128; // 1280 / 10
-                rows = 72;  // 720 / 10
+                targetCols = 128; // 1280 / 10
+                targetRows = 72;  // 720 / 10
             } else if (resolution === '900p') {
-                cols = 144; // 1440 / 10
-                rows = 90;  // 900 / 10
+                targetCols = 144; // 1440 / 10
+                targetRows = 90;  // 900 / 10
             }
 
-            // 2. Hide start menu, show main UI
+            // Route grid setup through our central WorldState object
+            WorldState.setup(targetCols, targetRows, 10);
+
             document.getElementById('startMenu').style.display = 'none';
             document.getElementById('mainUI').style.display = 'block';
 
-            // 3. Initialize the grid and start loop
             initGrid();
             requestAnimationFrame(loop);
         }
 
         function initGrid() {
+            // Read from WorldState instead of local variables
+            const cols = WorldState.cols;
+            const rows = WorldState.rows;
+            const cellSize = WorldState.cellSize;
+
             for (let i = 0; i < cols; i++) {
-                grid[i] = [];
                 for (let j = 0; j < rows; j++) {
                     
                     let nx = i / cols - 0.5;
@@ -222,11 +228,13 @@
 
                     let baseTemp = 0;
                     let baseMoisture = 0;
+                    let friction = 0.1; // Base friction (water)
 
                     if (elevation < 0.45) { 
                         let waterTempNoise = simplex.noise2D(1.5 * nx + 100, 1.5 * ny + 100);
                         baseTemp = 17.5 + (waterTempNoise * 12.5); 
                         baseMoisture = 1.0; 
+                        friction = 0.05; // Water has very low friction, allowing strong winds
                     } else { 
                         let landTempNoise = simplex.noise2D(2 * nx + 200, 2 * ny + 200);
                         baseTemp = 20 + (landTempNoise * 10);
@@ -234,38 +242,62 @@
                         if (elevation > 0.70) {
                             baseTemp -= (elevation - 0.70) * 50; 
                             baseMoisture = 0.1; 
+                            friction = 0.8; // Mountains block and slow down wind heavily
                         } else if (elevation < 0.50) {
                             baseTemp += 5; 
                             baseMoisture = 0.8;
+                            friction = 0.3; // Beaches
                         } else {
                             let moistureNoise = simplex.noise2D(3 * nx + 300, 3 * ny + 300);
                             baseMoisture = 0.45 + (moistureNoise * 0.25); 
+                            friction = 0.5; // Inland fields/forests
                         }
                     }
 
-                    grid[i][j] = {
+                    // Calculate initial static pressure (colder/higher = lower initial surface pressure generally, but we'll use basePressure for now to let physics solve it)
+                    let initialPressure = WorldState.basePressure - (elevation * 100) + (10 - baseTemp);
+
+                    // Fully expanded weather cell
+                    WorldState.grid[i][j] = {
+                        // Terrain Data
                         elevation: elevation,
-                        pressure: 1013, 
+                        surfaceFriction: friction,
+                        
+                        // Thermodynamic Data
                         temperature: baseTemp,
                         baseTemp: baseTemp,    
                         humidity: baseMoisture,
                         baseMoisture: baseMoisture, 
-                        windU: 0, 
-                        windV: 0  
+                        pressure: initialPressure,
+                        
+                        // Kinematic Data (Wind)
+                        windU: 0, // Horizontal wind
+                        windV: 0, // Vertical wind
+                        
+                        // Hydrological Data (For future updates)
+                        clouds: 0,
+                        precipitation: 0
                     };
                 }
             }
-            // Center the camera on the generated map
+            // Center the camera dynamically using WorldState dimensions
             camera.x = (window.innerWidth / 2) - ((cols * cellSize) / 2);
             camera.y = (window.innerHeight / 2) - ((rows * cellSize) / 2);
         }
 
         // --- PHYSICS ENGINE ---
         function updatePhysics() {
-            for (let i = 0; i < cols; i++) {
-                for (let j = 0; j < rows; j++) {
-                    grid[i][j].temperature += (Math.random() - 0.5) * 0.5;
-                    grid[i][j].temperature += (grid[i][j].baseTemp - grid[i][j].temperature) * 0.01;
+            // Using WorldState logic
+            for (let i = 0; i < WorldState.cols; i++) {
+                for (let j = 0; j < WorldState.rows; j++) {
+                    let cell = WorldState.grid[i][j];
+                    
+                    cell.temperature += (Math.random() - 0.5) * 0.5;
+                    cell.temperature += (cell.baseTemp - cell.temperature) * 0.01;
+                    
+                    // Future: We will call external physics functions here like:
+                    // PhysicsEngine.calculatePressureGradient(WorldState);
+                    // PhysicsEngine.advectFluids(WorldState);
                 }
             }
         }
@@ -290,7 +322,8 @@
             ctx.translate(camera.x, camera.y);
             ctx.scale(camera.zoom, camera.zoom);
 
-            FilterSystem.render(ctx, grid, cols, rows, cellSize);
+            // Pass the WorldState data to the Filter renderer
+            FilterSystem.render(ctx, WorldState.grid, WorldState.cols, WorldState.rows, WorldState.cellSize);
 
             requestAnimationFrame(loop);
         }
