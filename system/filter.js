@@ -162,30 +162,32 @@ const FilterSystem = {
     getMoistureColor: function(cell) {
         return `hsl(${40 + (cell.humidity * 180)}, 80%, ${70 - (cell.humidity * 30)}%)`;
     },
+drawComposite: function(ctx, cell, x, y, cellSize) {
+        // ... (Keep your existing terrain, temp radar, and cloud code here) ...
 
-    drawComposite: function(ctx, cell, x, y, cellSize) {
-        // 1. Draw the terrain
-        ctx.fillStyle = this.getTerrainColor(cell);
-        ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
-
-        // 2. Draw the subtle temperature radar overlay
-        const tempIntensity = Math.max(0, Math.min(255, Math.floor((cell.temperature / 30) * 255)));
-        ctx.fillStyle = `rgba(${tempIntensity}, 50, ${255 - tempIntensity}, 0.05)`;
-        ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
-
-        // 3. Continental Scale Clouds
+        // Continental Scale Clouds
         if (cell.clouds > 0.1) {
-            // Use a fixed size ratio (e.g., 85% of the cell).
-            // This prevents the "growing boxes" look while keeping the gaps between cells.
             const sizeRatio = 0.85; 
             const cloudSize = cellSize * sizeRatio;
             const offset = (cellSize - cloudSize) / 2;
 
-            // Use ONLY opacity to show cloud thickness/formation
             const cloudOpacity = Math.min(0.95, cell.clouds * 0.3);
-            
             ctx.fillStyle = `rgba(255, 255, 255, ${cloudOpacity})`;
             ctx.fillRect((x * cellSize) + offset, (y * cellSize) + offset, cloudSize, cloudSize);
+        }
+
+        // --- ADD THIS NEW CODE BELOW THE CLOUDS ---
+
+        // Draw Heavy Rain (Dark Blue overlay)
+        if (cell.precipitation > 0) {
+            ctx.fillStyle = `rgba(10, 30, 80, ${cell.precipitation * 0.6})`;
+            ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+        }
+
+        // Draw Lightning Flash (Bright Yellow/White)
+        if (cell.lightning > 0) {
+            ctx.fillStyle = `rgba(255, 255, 200, ${cell.lightning})`;
+            ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
         }
     },
 
