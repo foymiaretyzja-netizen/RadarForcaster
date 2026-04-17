@@ -163,9 +163,16 @@ const FilterSystem = {
         return `hsl(${40 + (cell.humidity * 180)}, 80%, ${70 - (cell.humidity * 30)}%)`;
     },
 drawComposite: function(ctx, cell, x, y, cellSize) {
-        // ... (Keep your existing terrain, temp radar, and cloud code here) ...
+        // 1. Draw the terrain (THIS IS WHAT WAS MISSING!)
+        ctx.fillStyle = this.getTerrainColor(cell);
+        ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
 
-        // Continental Scale Clouds
+        // 2. Draw the subtle temperature radar overlay
+        const tempIntensity = Math.max(0, Math.min(255, Math.floor((cell.temperature / 30) * 255)));
+        ctx.fillStyle = `rgba(${tempIntensity}, 50, ${255 - tempIntensity}, 0.05)`;
+        ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+
+        // 3. Continental Scale Clouds
         if (cell.clouds > 0.1) {
             const sizeRatio = 0.85; 
             const cloudSize = cellSize * sizeRatio;
@@ -176,15 +183,13 @@ drawComposite: function(ctx, cell, x, y, cellSize) {
             ctx.fillRect((x * cellSize) + offset, (y * cellSize) + offset, cloudSize, cloudSize);
         }
 
-        // --- ADD THIS NEW CODE BELOW THE CLOUDS ---
-
-        // Draw Heavy Rain (Dark Blue overlay)
+        // 4. Draw Heavy Rain (Dark Blue overlay)
         if (cell.precipitation > 0) {
             ctx.fillStyle = `rgba(10, 30, 80, ${cell.precipitation * 0.6})`;
             ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
         }
 
-        // Draw Lightning Flash (Bright Yellow/White)
+        // 5. Draw Lightning Flash (Bright Yellow/White)
         if (cell.lightning > 0) {
             ctx.fillStyle = `rgba(255, 255, 200, ${cell.lightning})`;
             ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
